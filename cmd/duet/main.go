@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -28,7 +29,7 @@ var rootCmd = &cobra.Command{
 	Short: "Duet - Infrastructure and Configuration in Harmony",
 	Long: `Duet is a tool that orchestrates both infrastructure provisioning
 and configuration management using Lua as its configuration language.
-Complete documentation is available at https://github.com/rebeleopsio/duet`,
+Complete documentation is available at https://github.com/rebelopsio/duet`,
 }
 
 var applyCmd = &cobra.Command{
@@ -85,11 +86,27 @@ func initConfig() {
 }
 
 func handleApply(filename string) error {
-	// Implementation will go here
+	ctx := context.Background()
+	resources, err := store.GetResources(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get resources: %w", err)
+	}
+
+	log.Printf("Found %d existing resources", len(resources))
+
+	// TODO: Implement actual apply logic
 	return nil
 }
 
 func handlePlan(filename string) error {
-	// Implementation will go here
+	ctx := context.Background()
+	resources, err := store.GetResources(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get resources: %w", err)
+	}
+
+	log.Printf("Planning changes for %d existing resources", len(resources))
+
+	// TODO: Implement actual plan logic
 	return nil
 }
