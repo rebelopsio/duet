@@ -16,10 +16,16 @@ tasks:
       - rm -rf {{.BUILD_DIR}}
       - rm -rf {{.COVERAGE_DIR}}
 
+  ensure-lint:
+    internal: true
+    cmds:
+      - which golangci-lint || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
   lint:
     desc: Run golangci-lint
+    deps: [ensure-lint]
     cmds:
-      - golangci-lint run
+      - golangci-lint run --timeout=5m
 
   test:
     desc: Run tests
