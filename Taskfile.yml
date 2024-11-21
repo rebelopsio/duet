@@ -1,0 +1,67 @@
+version: "3"
+
+vars:
+  GO_MODULE: github.com/rebelopsio/duet
+  BUILD_DIR: dist
+  COVERAGE_DIR: coverage
+
+tasks:
+  default:
+    cmds:
+      - task: test
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -rf {{.COVERAGE_DIR}}
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: Run tests
+    cmds:
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
+      - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
+
+  build:
+    desc: Build binary
+    cmds:
+      - task: clean
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/duet cmd/duet/main.go
+
+  install-tools:
+    desc: Install development tools
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install github.com/goreleaser/goreleaser@latest
+
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  pre-commit:
+    desc: Run pre-commit checks
+    cmds:
+      - task: generate
+      - task: lint
+      - task: test
+
+  check-license:
+    desc: Check license headers
+    cmds:
+      - |
+        find . -type f -name "*.go" -not -path "./vendor/*" -exec sh -c '
+          for file do
+            if ! grep -q "Copyright" "$file"; then
+              echo "Missing license header in $file"
+              exit 1
+            fi
+          done
+        ' sh {} +
