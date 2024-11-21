@@ -34,4 +34,3 @@ run:
   timeout: 5m
   go: "1.21"
   allow-parallel-runners: true
-  allow-serial-runners: true
