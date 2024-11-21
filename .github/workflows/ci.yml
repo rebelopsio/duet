@@ -17,8 +17,8 @@ jobs:
         with:
           go-version: "1.21"
 
-      - name: Install Task
-        uses: arduino/setup-task@v1
+      - name: Setup Task
+        uses: illbjorn/setup-taskfile@main
 
       - name: Lint and Test
         run: |
