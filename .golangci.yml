@@ -1,0 +1,37 @@
+linters:
+  enable:
+    - gofmt
+    - govet
+    - staticcheck
+    - errcheck
+    - gosimple
+    - typecheck
+    - unused
+    - ineffassign
+  disable:
+    - deadcode # Deprecated
+    - structcheck # Deprecated
+    - varcheck # Deprecated
+
+linters-settings:
+  govet:
+    settings:
+      shadow:
+        strict: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - dupl
+        - gosec
+
+run:
+  timeout: 5m
+  go: "1.21"
+  allow-parallel-runners: true
+  allow-serial-runners: true
