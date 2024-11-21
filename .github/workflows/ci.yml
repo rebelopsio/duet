@@ -16,6 +16,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: "1.21"
+          cache: false # Disable go module cache to avoid conflicts
 
       - name: Install Task
         uses: arduino/setup-task@v1
@@ -25,6 +26,8 @@ jobs:
         with:
           version: latest
           args: --config=.golangci.yml
+          skip-cache: true # Skip cache to avoid tar extraction issues
+          install-mode: "binary" # Install directly as binary
 
       - name: Run tests
         run: task test
@@ -42,6 +45,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: "1.21"
+          cache: false # Disable go module cache
 
       - name: Run semantic-release
         env:
@@ -62,6 +66,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: "1.21"
+          cache: false # Disable go module cache
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4
