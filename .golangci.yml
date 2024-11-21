@@ -8,16 +8,37 @@ linters:
     - typecheck
     - unused
     - ineffassign
-  disable:
-    - deadcode # Deprecated
-    - structcheck # Deprecated
-    - varcheck # Deprecated
 
 linters-settings:
   govet:
-    settings:
-      shadow:
-        strict: true
+    enable:
+      - asmdecl
+      - assign
+      - atomic
+      - bools
+      - buildtag
+      - cgocall
+      - composites
+      - copylocks
+      - errorsas
+      - framepointer
+      - httpresponse
+      - ifaceassert
+      - loopclosure
+      - lostcancel
+      - nilfunc
+      - printf
+      - shift
+      - sigchanyzer
+      - stdmethods
+      - stringintconv
+      - structtag
+      - testinggoroutine
+      - tests
+      - unmarshal
+      - unreachable
+      - unsafeptr
+      - unusedresult
 
 issues:
   exclude-use-default: false
@@ -33,4 +54,3 @@ issues:
 run:
   timeout: 5m
   go: "1.21"
-  allow-parallel-runners: true
