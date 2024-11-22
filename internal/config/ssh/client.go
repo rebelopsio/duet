@@ -53,12 +53,22 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) Execute(ctx context.Context, command string) (string, error) {
+func (c *Client) Execute(ctx context.Context, command string) (output string, err error) {
 	session, err := c.client.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+
+	defer func() {
+		closeErr := session.Close()
+		if err == nil {
+			// If there was no error from the command, return any close error
+			err = closeErr
+		} else if closeErr != nil {
+			// If there were both command and close errors, combine them
+			err = fmt.Errorf("command error: %w; close error: %v", err, closeErr)
+		}
+	}()
 
 	// Set up pipes for stdout and stderr
 	var stdout, stderr io.Reader
@@ -77,7 +87,7 @@ func (c *Client) Execute(ctx context.Context, command string) (string, error) {
 	}
 
 	// Read output
-	output, err := io.ReadAll(stdout)
+	outputBytes, err := io.ReadAll(stdout)
 	if err != nil {
 		return "", fmt.Errorf("failed to read stdout: %w", err)
 	}
@@ -93,15 +103,26 @@ func (c *Client) Execute(ctx context.Context, command string) (string, error) {
 		return "", fmt.Errorf("command failed: %s: %w", string(errOutput), err)
 	}
 
-	return string(output), nil
+	return string(outputBytes), nil
 }
 
 // ValidateConnection tests the SSH connection without executing a command
-func (c *Client) ValidateConnection() error {
+func (c *Client) ValidateConnection() (err error) {
 	session, err := c.client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+
+	defer func() {
+		closeErr := session.Close()
+		if err == nil {
+			// If validation succeeded, return any close error
+			err = closeErr
+		} else if closeErr != nil {
+			// If both validation and close failed, combine the errors
+			err = fmt.Errorf("validation error: %w; close error: %v", err, closeErr)
+		}
+	}()
+
 	return nil
 }

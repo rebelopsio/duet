@@ -1,0 +1,59 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: [1.21.x]
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Install Task
+        uses: arduino/setup-task@v1
+
+      - name: Run Tests
+        run: |
+          task test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+
+  #  integration:
+  #    runs-on: ubuntu-latest
+  #    needs: test
+  #
+  #    steps:
+  #      - uses: actions/checkout@v3
+  #
+  #      - name: Set up Go
+  #        uses: actions/setup-go@v4
+  #        with:
+  #          go-version: "1.21"
+  #
+  #      - name: Run Integration Tests
+  #        run: |
+  #          task test-integration
+  #        env:
+  #          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #          AWS_REGION: us-west-2

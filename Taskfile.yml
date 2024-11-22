@@ -28,11 +28,27 @@ tasks:
       - golangci-lint run --config=.golangci.yml
 
   test:
-    desc: Run tests
+    desc: Run unit tests
     cmds:
       - mkdir -p {{.COVERAGE_DIR}}
       - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
       - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
+
+  test-integration:
+    desc: Run integration tests
+    cmds:
+      - go test -tags=integration ./... -v
+
+  test-coverage:
+    desc: Show test coverage in browser
+    deps: [test]
+    cmds:
+      - go tool cover -html={{.COVERAGE_DIR}}/coverage.out
+
+  test-race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./...
 
   build:
     desc: Build binary
