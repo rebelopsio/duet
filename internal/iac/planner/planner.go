@@ -3,12 +3,12 @@ package planner
 import (
 	"context"
 
-	"github.com/rebelopsio/duet/internal/core/state"
 	"github.com/rebelopsio/duet/internal/iac/provider"
+	"github.com/rebelopsio/duet/pkg/types"
 )
 
 type Change struct {
-	Resource provider.Resource
+	Resource types.Resource
 	Config   map[string]interface{}
 	Type     string
 	Provider string
@@ -19,13 +19,11 @@ type Plan struct {
 }
 
 type Planner struct {
-	store     *state.Store
 	providers map[string]provider.Provider
 }
 
-func NewPlanner(store *state.Store) *Planner {
+func NewPlanner() *Planner {
 	return &Planner{
-		store:     store,
 		providers: make(map[string]provider.Provider),
 	}
 }
@@ -35,6 +33,6 @@ func (p *Planner) RegisterProvider(provider provider.Provider) {
 }
 
 func (p *Planner) CreatePlan(ctx context.Context, config map[string]interface{}) (*Plan, error) {
-	// Implementation
+	// Implementation will go here
 	return &Plan{}, nil
 }

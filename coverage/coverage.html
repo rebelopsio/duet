@@ -59,15 +59,15 @@
 				
 				<option value="file1">github.com/rebelopsio/duet/internal/config/executor/executor.go (0.0%)</option>
 				
-				<option value="file2">github.com/rebelopsio/duet/internal/config/ssh/client.go (0.0%)</option>
+				<option value="file2">github.com/rebelopsio/duet/internal/config/ssh/client.go (61.3%)</option>
 				
-				<option value="file3">github.com/rebelopsio/duet/internal/config/tasks/package.go (0.0%)</option>
+				<option value="file3">github.com/rebelopsio/duet/internal/config/tasks/package.go (66.7%)</option>
 				
-				<option value="file4">github.com/rebelopsio/duet/internal/core/lua/engine.go (0.0%)</option>
+				<option value="file4">github.com/rebelopsio/duet/internal/core/lua/engine.go (84.6%)</option>
 				
-				<option value="file5">github.com/rebelopsio/duet/internal/core/state/store.go (0.0%)</option>
+				<option value="file5">github.com/rebelopsio/duet/internal/core/state/store.go (85.0%)</option>
 				
-				<option value="file6">github.com/rebelopsio/duet/internal/iac/planner/planner.go (0.0%)</option>
+				<option value="file6">github.com/rebelopsio/duet/internal/iac/planner/planner.go (66.7%)</option>
 				
 				<option value="file7">github.com/rebelopsio/duet/internal/iac/provider/aws/aws.go (0.0%)</option>
 				
@@ -214,28 +214,25 @@ func handlePlan(filename string) error <span class="cov0" title="0">{
 
 import (
         "context"
-        "fmt"
-
-        "github.com/rebelopsio/duet/internal/config/ssh"
 )
 
+// Executor defines the interface for executing commands
+type ExecutorInterface interface {
+        Execute(ctx context.Context, command string) (string, error)
+}
+
 type Executor struct {
-        sshClient *ssh.Client
+        executor ExecutorInterface
 }
 
-func NewExecutor(sshConfig *ssh.Config) (*Executor, error) <span class="cov0" title="0">{
-        client, err := ssh.NewClient(sshConfig)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, fmt.Errorf("failed to create SSH client: %w", err)
-        }</span>
-
-        <span class="cov0" title="0">return &amp;Executor{
-                sshClient: client,
-        }, nil</span>
-}
+func NewExecutor(executor ExecutorInterface) *Executor <span class="cov0" title="0">{
+        return &amp;Executor{
+                executor: executor,
+        }
+}</span>
 
 func (e *Executor) Execute(ctx context.Context, command string) (string, error) <span class="cov0" title="0">{
-        return e.sshClient.Execute(ctx, command)
+        return e.executor.Execute(ctx, command)
 }</span>
 </pre>
 		
@@ -245,127 +242,230 @@ import (
         "context"
         "fmt"
         "io"
+        "net"
+        "strings"
+        "sync"
+        "time"
 
         "golang.org/x/crypto/ssh"
 )
 
+// Config holds the SSH client configuration
 type Config struct {
         Host       string
         User       string
         PrivateKey string
         Port       int
+        Timeout    time.Duration
 }
 
+// Client represents an SSH client
 type Client struct {
         config *Config
         client *ssh.Client
 }
 
-func NewClient(config *Config) (*Client, error) <span class="cov0" title="0">{
-        signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKey))
+// NewClient creates a new SSH client with timeouts
+func NewClient(config *Config) (*Client, error) <span class="cov5" title="3">{
+        if config.Timeout == 0 </span><span class="cov0" title="0">{
+                config.Timeout = 30 * time.Second
+        }</span>
+
+        // Parse the private key
+        <span class="cov5" title="3">signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKey))
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to parse private key: %w", err)
         }</span>
 
-        <span class="cov0" title="0">sshConfig := &amp;ssh.ClientConfig{
+        // Create SSH client config
+        <span class="cov5" title="3">sshConfig := &amp;ssh.ClientConfig{
                 User: config.User,
                 Auth: []ssh.AuthMethod{
                         ssh.PublicKeys(signer),
                 },
-                HostKeyCallback: ssh.InsecureIgnoreHostKey(), // Note: In production, use proper host key verification
+                HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+                Timeout:         config.Timeout,
         }
 
+        // Create a connection with timeout
         addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
-        client, err := ssh.Dial("tcp", addr, sshConfig)
+        conn, err := net.DialTimeout("tcp", addr, config.Timeout)
         if err != nil </span><span class="cov0" title="0">{
-                return nil, fmt.Errorf("failed to dial SSH: %w", err)
+                return nil, fmt.Errorf("failed to connect: %w", err)
         }</span>
 
-        <span class="cov0" title="0">return &amp;Client{
+        // Set connection deadline
+        <span class="cov5" title="3">if err := conn.SetDeadline(time.Now().Add(config.Timeout)); err != nil </span><span class="cov0" title="0">{
+                closeErr := conn.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to set connection deadline and close connection: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to set connection deadline: %w", err)</span>
+        }
+
+        // Create new SSH client connection
+        <span class="cov5" title="3">c, chans, reqs, err := ssh.NewClientConn(conn.(*net.TCPConn), addr, sshConfig)
+        if err != nil </span><span class="cov0" title="0">{
+                closeErr := conn.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to create SSH connection and close connection: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to create SSH connection: %w", err)</span>
+        }
+
+        // Clear the deadline after successful handshake
+        <span class="cov5" title="3">if err := conn.SetDeadline(time.Time{}); err != nil </span><span class="cov0" title="0">{
+                closeErr := c.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to clear connection deadline and close client: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to clear connection deadline: %w", err)</span>
+        }
+
+        <span class="cov5" title="3">client := ssh.NewClient(c, chans, reqs)
+
+        return &amp;Client{
                 config: config,
                 client: client,
         }, nil</span>
 }
 
-func (c *Client) Close() error <span class="cov0" title="0">{
-        if c.client != nil </span><span class="cov0" title="0">{
+// Close closes the SSH connection
+func (c *Client) Close() error <span class="cov5" title="3">{
+        if c.client != nil </span><span class="cov5" title="3">{
                 return c.client.Close()
         }</span>
         <span class="cov0" title="0">return nil</span>
 }
 
-func (c *Client) Execute(ctx context.Context, command string) (output string, err error) <span class="cov0" title="0">{
-        session, err := c.client.NewSession()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to create session: %w", err)
-        }</span>
-
-        <span class="cov0" title="0">defer func() </span><span class="cov0" title="0">{
-                closeErr := session.Close()
-                if err == nil </span><span class="cov0" title="0">{
-                        // If there was no error from the command, return any close error
-                        err = closeErr
-                }</span> else<span class="cov0" title="0"> if closeErr != nil </span><span class="cov0" title="0">{
-                        // If there were both command and close errors, combine them
-                        err = fmt.Errorf("command error: %w; close error: %v", err, closeErr)
-                }</span>
-        }()
-
-        // Set up pipes for stdout and stderr
-        <span class="cov0" title="0">var stdout, stderr io.Reader
-        stdout, err = session.StdoutPipe()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to create stdout pipe: %w", err)
-        }</span>
-        <span class="cov0" title="0">stderr, err = session.StderrPipe()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to create stderr pipe: %w", err)
-        }</span>
-
-        // Start the command
-        <span class="cov0" title="0">if err := session.Start(command); err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to start command: %w", err)
-        }</span>
-
-        // Read output
-        <span class="cov0" title="0">outputBytes, err := io.ReadAll(stdout)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to read stdout: %w", err)
-        }</span>
-
-        // Check for errors
-        <span class="cov0" title="0">errOutput, err := io.ReadAll(stderr)
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("failed to read stderr: %w", err)
-        }</span>
-
-        // Wait for the command to complete
-        <span class="cov0" title="0">if err := session.Wait(); err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("command failed: %s: %w", string(errOutput), err)
-        }</span>
-
-        <span class="cov0" title="0">return string(outputBytes), nil</span>
-}
-
-// ValidateConnection tests the SSH connection without executing a command
-func (c *Client) ValidateConnection() (err error) <span class="cov0" title="0">{
+// ValidateConnection tests if the SSH connection is working
+func (c *Client) ValidateConnection() error <span class="cov1" title="1">{
         session, err := c.client.NewSession()
         if err != nil </span><span class="cov0" title="0">{
                 return fmt.Errorf("failed to create session: %w", err)
         }</span>
+        <span class="cov1" title="1">defer func() </span><span class="cov1" title="1">{
+                if err := session.Close(); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("error closing session: %v\n", err)
+                }</span>
+        }()
+        <span class="cov1" title="1">return nil</span>
+}
 
-        <span class="cov0" title="0">defer func() </span><span class="cov0" title="0">{
-                closeErr := session.Close()
-                if err == nil </span><span class="cov0" title="0">{
-                        // If validation succeeded, return any close error
-                        err = closeErr
-                }</span> else<span class="cov0" title="0"> if closeErr != nil </span><span class="cov0" title="0">{
-                        // If both validation and close failed, combine the errors
-                        err = fmt.Errorf("validation error: %w; close error: %v", err, closeErr)
+// Execute runs a command over SSH with context for cancellation
+func (c *Client) Execute(ctx context.Context, command string) (string, error) <span class="cov3" title="2">{
+        session, err := c.client.NewSession()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create session: %w", err)
+        }</span>
+        <span class="cov3" title="2">defer func() </span><span class="cov3" title="2">{
+                if err := session.Close(); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error closing session: %v\n", err)
                 }</span>
         }()
 
-        <span class="cov0" title="0">return nil</span>
+        // Set up pipes for output
+        <span class="cov3" title="2">stdout, err := session.StdoutPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create stdout pipe: %w", err)
+        }</span>
+        <span class="cov3" title="2">stderr, err := session.StderrPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create stderr pipe: %w", err)
+        }</span>
+
+        <span class="cov3" title="2">type commandResult struct {
+                output     string
+                err        error
+                stderrData string
+        }
+        resultChan := make(chan commandResult, 1)
+
+        go func() </span><span class="cov3" title="2">{
+                // Start the command
+                if err := session.Start(command); err != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to start command: %w", err)}
+                        return
+                }</span>
+
+                // Read stdout and stderr concurrently
+                <span class="cov3" title="2">var stdoutData, stderrData []byte
+                var stdoutErr, stderrErr error
+                var wg sync.WaitGroup
+
+                wg.Add(2)
+                go func() </span><span class="cov3" title="2">{
+                        defer wg.Done()
+                        stdoutData, stdoutErr = io.ReadAll(stdout)
+                }</span>()
+
+                <span class="cov3" title="2">go func() </span><span class="cov3" title="2">{
+                        defer wg.Done()
+                        stderrData, stderrErr = io.ReadAll(stderr)
+                }</span>()
+
+                // Wait for all readers to complete
+                <span class="cov3" title="2">wg.Wait()
+
+                // Handle any read errors
+                if stdoutErr != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to read stdout: %w", stdoutErr)}
+                        return
+                }</span>
+                <span class="cov3" title="2">if stderrErr != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to read stderr: %w", stderrErr)}
+                        return
+                }</span>
+
+                // Wait for the command to complete
+                <span class="cov3" title="2">err := session.Wait()
+                if err != nil </span><span class="cov1" title="1">{
+                        resultChan &lt;- commandResult{
+                                err:        fmt.Errorf("command failed: %w", err),
+                                stderrData: string(stderrData),
+                        }
+                        return
+                }</span>
+
+                <span class="cov1" title="1">resultChan &lt;- commandResult{
+                        output:     string(stdoutData),
+                        stderrData: string(stderrData),
+                }</span>
+        }()
+
+        // Wait for completion or cancellation
+        <span class="cov3" title="2">select </span>{
+        case result := &lt;-resultChan:<span class="cov1" title="1">
+                if result.err != nil </span><span class="cov0" title="0">{
+                        if result.stderrData != "" </span><span class="cov0" title="0">{
+                                return "", fmt.Errorf("%w: %s", result.err, result.stderrData)
+                        }</span>
+                        <span class="cov0" title="0">return "", result.err</span>
+                }
+                <span class="cov1" title="1">return result.output, nil</span>
+
+        case &lt;-ctx.Done():<span class="cov1" title="1">
+                if err := session.Signal(ssh.SIGTERM); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error sending SIGTERM: %v\n", err)
+                }</span>
+                <span class="cov1" title="1">return "", ctx.Err()</span>
+
+        case &lt;-time.After(c.config.Timeout):<span class="cov0" title="0">
+                if err := session.Signal(ssh.SIGTERM); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error sending SIGTERM: %v\n", err)
+                }</span>
+                <span class="cov0" title="0">return "", context.DeadlineExceeded</span>
+        }
+}
+
+func isClosedError(err error) bool <span class="cov10" title="11">{
+        if err == nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov10" title="11">return strings.Contains(err.Error(), "use of closed network connection") ||
+                strings.Contains(err.Error(), "connection reset by peer") ||
+                strings.Contains(err.Error(), "closed network connection") ||
+                strings.Contains(err.Error(), "EOF")</span>
 }
 </pre>
 		
@@ -373,23 +473,27 @@ func (c *Client) ValidateConnection() (err error) <span class="cov0" title="0">{
 
 import (
         "context"
-
-        "github.com/rebelopsio/duet/internal/config/executor"
+        "fmt"
 )
 
-type PackageManager struct {
-        executor *executor.Executor
+// ExecutorInterface defines the required methods for command execution
+type ExecutorInterface interface {
+        Execute(ctx context.Context, command string) (string, error)
 }
 
-func NewPackageManager(executor *executor.Executor) *PackageManager <span class="cov0" title="0">{
+type PackageManager struct {
+        executor ExecutorInterface
+}
+
+func NewPackageManager(executor ExecutorInterface) *PackageManager <span class="cov0" title="0">{
         return &amp;PackageManager{
                 executor: executor,
         }
 }</span>
 
-func (pm *PackageManager) Install(ctx context.Context, packageName string) error <span class="cov0" title="0">{
-        // Implementation
-        return nil
+func (pm *PackageManager) Install(ctx context.Context, packageName string) error <span class="cov8" title="1">{
+        _, err := pm.executor.Execute(ctx, fmt.Sprintf("apt-get install -y %s", packageName))
+        return err
 }</span>
 </pre>
 		
@@ -405,14 +509,14 @@ type Engine struct {
         state *lua.LState
 }
 
-func NewEngine() *Engine <span class="cov0" title="0">{
+func NewEngine() *Engine <span class="cov10" title="3">{
         return &amp;Engine{
                 state: lua.NewState(),
         }
 }</span>
 
-func (e *Engine) Close() <span class="cov0" title="0">{
-        if e.state != nil </span><span class="cov0" title="0">{
+func (e *Engine) Close() <span class="cov10" title="3">{
+        if e.state != nil </span><span class="cov10" title="3">{
                 e.state.Close()
         }</span>
 }
@@ -421,13 +525,13 @@ func (e *Engine) LoadFile(filename string) error <span class="cov0" title="0">{
         return e.state.DoFile(filename)
 }</span>
 
-func (e *Engine) CallFunction(name string, args ...lua.LValue) (lua.LValue, error) <span class="cov0" title="0">{
+func (e *Engine) CallFunction(name string, args ...lua.LValue) (lua.LValue, error) <span class="cov10" title="3">{
         fn := e.state.GetGlobal(name)
-        if fn == lua.LNil </span><span class="cov0" title="0">{
+        if fn == lua.LNil </span><span class="cov1" title="1">{
                 return nil, fmt.Errorf("function %s not found", name)
         }</span>
 
-        <span class="cov0" title="0">err := e.state.CallByParam(lua.P{
+        <span class="cov6" title="2">err := e.state.CallByParam(lua.P{
                 Fn:      fn,
                 NRet:    1,
                 Protect: true,
@@ -436,7 +540,7 @@ func (e *Engine) CallFunction(name string, args ...lua.LValue) (lua.LValue, erro
                 return nil, fmt.Errorf("error calling function %s: %w", name, err)
         }</span>
 
-        <span class="cov0" title="0">ret := e.state.Get(-1)
+        <span class="cov6" title="2">ret := e.state.Get(-1)
         e.state.Pop(1)
         return ret, nil</span>
 }
@@ -468,47 +572,47 @@ type Resource struct {
         ConfigApplied bool
 }
 
-func NewStore(dbPath string) (*Store, error) <span class="cov0" title="0">{
+func NewStore(dbPath string) (*Store, error) <span class="cov1" title="1">{
         db, err := gorm.Open(sqlite.Open(dbPath), &amp;gorm.Config{})
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to open database: %w", err)
         }</span>
 
-        <span class="cov0" title="0">if err := db.AutoMigrate(&amp;Resource{}); err != nil </span><span class="cov0" title="0">{
+        <span class="cov1" title="1">if err := db.AutoMigrate(&amp;Resource{}); err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to migrate database: %w", err)
         }</span>
 
-        <span class="cov0" title="0">return &amp;Store{db: db}, nil</span>
+        <span class="cov1" title="1">return &amp;Store{db: db}, nil</span>
 }
 
 // GetResources retrieves all resources from the store
-func (s *Store) GetResources(ctx context.Context) ([]Resource, error) <span class="cov0" title="0">{
+func (s *Store) GetResources(ctx context.Context) ([]Resource, error) <span class="cov10" title="2">{
         var resources []Resource
         result := s.db.WithContext(ctx).Find(&amp;resources)
         if result.Error != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to get resources: %w", result.Error)
         }</span>
-        <span class="cov0" title="0">return resources, nil</span>
+        <span class="cov10" title="2">return resources, nil</span>
 }
 
 // SaveResource saves a resource to the store
-func (s *Store) SaveResource(ctx context.Context, resource *Resource) error <span class="cov0" title="0">{
+func (s *Store) SaveResource(ctx context.Context, resource *Resource) error <span class="cov10" title="2">{
         result := s.db.WithContext(ctx).Save(resource)
         return result.Error
 }</span>
 
 // GetResource retrieves a single resource by ID
-func (s *Store) GetResource(ctx context.Context, id string) (*Resource, error) <span class="cov0" title="0">{
+func (s *Store) GetResource(ctx context.Context, id string) (*Resource, error) <span class="cov10" title="2">{
         var resource Resource
         result := s.db.WithContext(ctx).First(&amp;resource, "id = ?", id)
-        if result.Error != nil </span><span class="cov0" title="0">{
+        if result.Error != nil </span><span class="cov1" title="1">{
                 return nil, result.Error
         }</span>
-        <span class="cov0" title="0">return &amp;resource, nil</span>
+        <span class="cov1" title="1">return &amp;resource, nil</span>
 }
 
 // DeleteResource removes a resource from the store
-func (s *Store) DeleteResource(ctx context.Context, id string) error <span class="cov0" title="0">{
+func (s *Store) DeleteResource(ctx context.Context, id string) error <span class="cov1" title="1">{
         result := s.db.WithContext(ctx).Delete(&amp;Resource{}, "id = ?", id)
         return result.Error
 }</span>
@@ -519,12 +623,12 @@ func (s *Store) DeleteResource(ctx context.Context, id string) error <span class
 import (
         "context"
 
-        "github.com/rebelopsio/duet/internal/core/state"
         "github.com/rebelopsio/duet/internal/iac/provider"
+        "github.com/rebelopsio/duet/pkg/types"
 )
 
 type Change struct {
-        Resource provider.Resource
+        Resource types.Resource
         Config   map[string]interface{}
         Type     string
         Provider string
@@ -535,23 +639,21 @@ type Plan struct {
 }
 
 type Planner struct {
-        store     *state.Store
         providers map[string]provider.Provider
 }
 
-func NewPlanner(store *state.Store) *Planner <span class="cov0" title="0">{
+func NewPlanner() *Planner <span class="cov0" title="0">{
         return &amp;Planner{
-                store:     store,
                 providers: make(map[string]provider.Provider),
         }
 }</span>
 
-func (p *Planner) RegisterProvider(provider provider.Provider) <span class="cov0" title="0">{
+func (p *Planner) RegisterProvider(provider provider.Provider) <span class="cov8" title="1">{
         p.providers[provider.Name()] = provider
 }</span>
 
-func (p *Planner) CreatePlan(ctx context.Context, config map[string]interface{}) (*Plan, error) <span class="cov0" title="0">{
-        // Implementation
+func (p *Planner) CreatePlan(ctx context.Context, config map[string]interface{}) (*Plan, error) <span class="cov8" title="1">{
+        // Implementation will go here
         return &amp;Plan{}, nil
 }</span>
 </pre>

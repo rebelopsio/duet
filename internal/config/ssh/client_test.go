@@ -1,165 +1,492 @@
 package ssh
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// mockSSHServer simulates an SSH server for testing
-type mockSSHServer struct {
-	listener net.Listener
-	config   *ssh.ServerConfig
+type keyPair struct {
+	PublicKey  ssh.PublicKey
+	PrivateKey string
 }
 
-func newMockSSHServer(t *testing.T) (*mockSSHServer, error) {
+type mockSSHServer struct {
+	listener     net.Listener
+	ctx          context.Context
+	config       *ssh.ServerConfig
+	ready        chan struct{}
+	done         chan struct{}
+	activeConns  map[string]net.Conn
+	t            *testing.T
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	activesMutex sync.RWMutex
+}
+
+// generateTestKey generates a test RSA key pair for testing
+func generateTestKey() (*keyPair, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Convert private key to PEM format
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}
+
+	// Generate SSH public key
+	publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public key: %w", err)
+	}
+
+	return &keyPair{
+		PrivateKey: string(pem.EncodeToMemory(privateKeyPEM)),
+		PublicKey:  publicKey,
+	}, nil
+}
+
+func newMockSSHServer(t *testing.T, keys *keyPair) (*mockSSHServer, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	config := &ssh.ServerConfig{
-		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-			return nil, nil
+		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if key.Type() == keys.PublicKey.Type() && bytes.Equal(key.Marshal(), keys.PublicKey.Marshal()) {
+				return &ssh.Permissions{}, nil
+			}
+			return nil, fmt.Errorf("unknown public key")
 		},
 	}
 
-	privateKey, err := ssh.ParsePrivateKey([]byte(testPrivateKey))
+	signer, err := ssh.ParsePrivateKey([]byte(keys.PrivateKey))
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
-	config.AddHostKey(privateKey)
+	config.AddHostKey(signer)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
 	server := &mockSSHServer{
-		listener: listener,
-		config:   config,
+		listener:    listener,
+		config:      config,
+		ready:       make(chan struct{}),
+		done:        make(chan struct{}),
+		activeConns: make(map[string]net.Conn),
+		t:           t,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 
-	go server.serve(t)
-	return server, nil
+	server.wg.Add(1)
+	go server.acceptConnections()
+
+	// Wait for server to be ready
+	select {
+	case <-server.ready:
+		return server, nil
+	case <-time.After(2 * time.Second):
+		cancel()
+		if err := listener.Close(); err != nil {
+			t.Logf("Failed to close listener: %v", err)
+		}
+		return nil, fmt.Errorf("timeout waiting for server to be ready")
+	}
 }
 
-func (s *mockSSHServer) serve(t *testing.T) {
+func (s *mockSSHServer) acceptConnections() {
+	defer s.wg.Done()
+	defer close(s.done)
+	defer s.cancel()
+
+	// Signal that we're ready to accept connections
+	close(s.ready)
+
 	for {
+		if err := s.listener.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second)); err != nil {
+			s.t.Logf("Failed to set accept deadline: %v", err)
+			return
+		}
+
 		conn, err := s.listener.Accept()
 		if err != nil {
+			if isTimeout(err) {
+				select {
+				case <-s.ctx.Done():
+					return
+				default:
+					continue
+				}
+			}
 			if !isClosedError(err) {
-				t.Errorf("Failed to accept connection: %v", err)
+				s.t.Logf("Accept error: %v", err)
 			}
 			return
 		}
 
-		_, chans, reqs, err := ssh.NewServerConn(conn, s.config)
-		if err != nil {
-			t.Errorf("Failed to handshake: %v", err)
-			continue
-		}
+		s.activesMutex.Lock()
+		s.activeConns[conn.RemoteAddr().String()] = conn
+		s.activesMutex.Unlock()
 
-		go ssh.DiscardRequests(reqs)
-		go handleChannels(chans, t)
+		s.wg.Add(1)
+		go s.handleConnection(conn)
 	}
 }
 
-func handleChannels(chans <-chan ssh.NewChannel, t *testing.T) {
-	for newChannel := range chans {
-		if newChannel.ChannelType() != "session" {
-			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-			continue
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "timeout") ||
+		strings.Contains(err.Error(), "deadline exceeded") ||
+		err == context.DeadlineExceeded
+}
+
+func (s *mockSSHServer) handleConnection(conn net.Conn) {
+	defer s.wg.Done()
+	defer func() {
+		s.activesMutex.Lock()
+		delete(s.activeConns, conn.RemoteAddr().String())
+		s.activesMutex.Unlock()
+		if err := conn.Close(); err != nil && !isClosedError(err) {
+			s.t.Logf("Connection close error: %v", err)
 		}
+	}()
 
-		channel, requests, err := newChannel.Accept()
-		if err != nil {
-			t.Errorf("Failed to accept channel: %v", err)
-			continue
+	sshConn, chans, reqs, err := ssh.NewServerConn(conn, s.config)
+	if err != nil {
+		if !isClosedError(err) {
+			s.t.Logf("SSH handshake error: %v", err)
 		}
+		return
+	}
 
-		go func(in <-chan *ssh.Request) {
-			for req := range in {
-				switch req.Type {
-				case "exec":
-					payload := struct{ Command string }{}
-					ssh.Unmarshal(req.Payload, &payload)
+	go func() {
+		<-s.ctx.Done()
+		if err := sshConn.Close(); err != nil && !isClosedError(err) {
+			s.t.Logf("SSH connection close error: %v", err)
+		}
+	}()
 
-					if payload.Command == "echo test" {
-						io.WriteString(channel, "test\n")
+	go ssh.DiscardRequests(reqs)
+	s.handleChannels(chans)
+}
+
+func (s *mockSSHServer) handleRequests(channel ssh.Channel, requests <-chan *ssh.Request) {
+	defer func() {
+		if err := channel.Close(); err != nil && !isClosedError(err) {
+			s.t.Logf("Channel close error: %v", err)
+		}
+	}()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case req, ok := <-requests:
+			if !ok {
+				return
+			}
+			switch req.Type {
+			case "exec":
+				exitStatus := make([]byte, 4)
+
+				payload := struct{ Command string }{}
+				if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+					s.t.Logf("Unmarshal error: %v", err)
+					if err := req.Reply(false, nil); err != nil {
+						s.t.Logf("Reply error: %v", err)
+					}
+					continue
+				}
+
+				if err := req.Reply(true, nil); err != nil {
+					s.t.Logf("Reply error: %v", err)
+					continue
+				}
+
+				if payload.Command == "echo test" {
+					if _, err := io.WriteString(channel, "test\n"); err != nil {
+						s.t.Logf("Write error: %v", err)
 					}
 
-					channel.Close()
+					// Send exit status
+					_, err := channel.SendRequest("exit-status", false, exitStatus)
+					if err != nil {
+						s.t.Logf("Failed to send exit status: %v", err)
+					}
+
+					if err := channel.CloseWrite(); err != nil && !isClosedError(err) {
+						s.t.Logf("CloseWrite error: %v", err)
+					}
+					return
 				}
-				req.Reply(true, nil)
+
+				if payload.Command == "sleep 10" {
+					// For the timeout test, we'll block until context is cancelled
+					select {
+					case <-s.ctx.Done():
+						// Send non-zero exit status for cancelled command
+						exitStatus[3] = 1
+						_, err := channel.SendRequest("exit-status", false, exitStatus)
+						if err != nil {
+							s.t.Logf("Failed to send exit status: %v", err)
+						}
+					case <-time.After(10 * time.Second):
+						// Normal completion
+						_, err := channel.SendRequest("exit-status", false, exitStatus)
+						if err != nil {
+							s.t.Logf("Failed to send exit status: %v", err)
+						}
+					}
+
+					if err := channel.CloseWrite(); err != nil && !isClosedError(err) {
+						s.t.Logf("CloseWrite error: %v", err)
+					}
+					return
+				}
+
+				// Unknown command, send error exit status
+				exitStatus[3] = 1
+				_, err := channel.SendRequest("exit-status", false, exitStatus)
+				if err != nil {
+					s.t.Logf("Failed to send exit status: %v", err)
+				}
+
+				if err := channel.CloseWrite(); err != nil && !isClosedError(err) {
+					s.t.Logf("CloseWrite error: %v", err)
+				}
+				return
+
+			default:
+				if err := req.Reply(false, nil); err != nil {
+					s.t.Logf("Reply error: %v", err)
+				}
 			}
-		}(requests)
+		}
 	}
 }
 
-func isClosedError(err error) bool {
-	return err.Error() == "use of closed network connection"
+func (s *mockSSHServer) handleChannels(chans <-chan ssh.NewChannel) {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case newChannel, ok := <-chans:
+			if !ok {
+				return
+			}
+			go s.handleChannel(newChannel)
+		}
+	}
 }
 
-const testPrivateKey = `-----BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn
-NhAAAAAwEAAQAAAQEAxU4rixQXoahCL2gVoNWswNMFxYEiO0YH9YbB1qh+9nYRYGzEOc0l
-...
------END OPENSSH PRIVATE KEY-----`
+func (s *mockSSHServer) handleChannel(newChannel ssh.NewChannel) {
+	if newChannel.ChannelType() != "session" {
+		if err := newChannel.Reject(ssh.UnknownChannelType, "unknown channel type"); err != nil {
+			s.t.Logf("Channel reject error: %v", err)
+		}
+		return
+	}
+
+	channel, requests, err := newChannel.Accept()
+	if err != nil {
+		s.t.Logf("Channel accept error: %v", err)
+		return
+	}
+
+	go s.handleRequests(channel, requests)
+}
+
+func (s *mockSSHServer) shutdown() error {
+	s.cancel()
+
+	if err := s.listener.Close(); err != nil {
+		return fmt.Errorf("failed to close listener: %w", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("timeout waiting for server shutdown")
+	}
+}
 
 func TestClient(t *testing.T) {
-	mockServer, err := newMockSSHServer(t)
+	if testing.Short() {
+		t.Skip("Skipping SSH tests in short mode")
+	}
+
+	// Generate a test key for this test run
+	keys, err := generateTestKey()
+	if err != nil {
+		t.Fatalf("Failed to generate test key: %v", err)
+	}
+
+	mockServer, err := newMockSSHServer(t, keys)
 	if err != nil {
 		t.Fatalf("Failed to start mock SSH server: %v", err)
 	}
-	defer mockServer.listener.Close()
+
+	// Use a cleanup function to ensure proper shutdown
+	cleanup := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			done <- mockServer.shutdown()
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Logf("Server shutdown error: %v", err)
+			}
+		case <-ctx.Done():
+			t.Log("Server shutdown timed out")
+		}
+	}
+	defer cleanup()
 
 	serverAddr := mockServer.listener.Addr().String()
-	host, port, err := net.SplitHostPort(serverAddr)
+	host, portStr, err := net.SplitHostPort(serverAddr)
 	if err != nil {
 		t.Fatalf("Failed to parse server address: %v", err)
 	}
 
-	config := &Config{
-		Host:       host,
-		User:       "test",
-		PrivateKey: testPrivateKey,
-		Port:       parseInt(port),
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
+		t.Fatalf("Failed to parse port number: %v", err)
 	}
 
-	t.Run("Connect", func(t *testing.T) {
+	config := &Config{
+		Host:       host,
+		Port:       port,
+		User:       "test",
+		PrivateKey: keys.PrivateKey,
+		Timeout:    2 * time.Second,
+	}
+
+	// Helper function to create and cleanup client
+	createClient := func(t *testing.T) (*Client, func()) {
 		client, err := NewClient(config)
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
-		defer client.Close()
 
-		err = client.ValidateConnection()
-		if err != nil {
-			t.Errorf("Failed to validate connection: %v", err)
+		cleanup := func() {
+			if err := client.Close(); err != nil && !isClosedError(err) {
+				t.Logf("Client close error: %v", err)
+			}
+		}
+
+		return client, cleanup
+	}
+
+	t.Run("Connect", func(t *testing.T) {
+		client, cleanup := createClient(t)
+		defer cleanup()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			done <- client.ValidateConnection()
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("Failed to validate connection: %v", err)
+			}
+		case <-ctx.Done():
+			t.Error("Connection validation timed out")
 		}
 	})
 
 	t.Run("Execute", func(t *testing.T) {
-		client, err := NewClient(config)
-		if err != nil {
-			t.Fatalf("Failed to create client: %v", err)
-		}
-		defer client.Close()
+		client, cleanup := createClient(t)
+		defer cleanup()
 
-		output, err := client.Execute(context.Background(), "echo test")
-		if err != nil {
-			t.Fatalf("Failed to execute command: %v", err)
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 
-		expected := "test\n"
-		if output != expected {
-			t.Errorf("Expected output %q, got %q", expected, output)
+		done := make(chan struct {
+			output string
+			err    error
+		}, 1)
+
+		go func() {
+			output, err := client.Execute(ctx, "echo test")
+			done <- struct {
+				output string
+				err    error
+			}{output, err}
+		}()
+
+		select {
+		case result := <-done:
+			if result.err != nil {
+				t.Fatalf("Failed to execute command: %v", result.err)
+			}
+			if result.output != "test\n" {
+				t.Errorf("Expected output %q, got %q", "test\n", result.output)
+			}
+		case <-ctx.Done():
+			t.Fatal("Command execution timed out")
 		}
 	})
-}
 
-func parseInt(s string) int {
-	var port int
-	fmt.Sscanf(s, "%d", &port)
-	return port
+	t.Run("ExecuteWithTimeout", func(t *testing.T) {
+		client, cleanup := createClient(t)
+		defer cleanup()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := client.Execute(ctx, "sleep 10")
+			done <- err
+		}()
+
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Error("Expected error, got nil")
+			} else if err != context.DeadlineExceeded {
+				t.Errorf("Expected context.DeadlineExceeded error, got: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("Test timed out waiting for command timeout")
+		}
+	})
 }

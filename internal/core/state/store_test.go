@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +14,11 @@ func TestStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			log.Printf("Warning: failed to remove temp directory: %v", err)
+		}
+	}()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 
