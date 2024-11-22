@@ -18,14 +18,16 @@ jobs:
           go-version: "1.21"
           cache: false
 
+      # Install Task using direct download instead of the action
       - name: Install Task
-        uses: arduino/setup-task@v1
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          args: --config=.golangci.yml --out-format=colored-line-number
+          args: --config=.golangci.yml
           skip-cache: true
           install-mode: binary
 
@@ -47,6 +49,11 @@ jobs:
           go-version: "1.21"
           cache: false
 
+      # Install Task for release job
+      - name: Install Task
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,6 +74,11 @@ jobs:
         with:
           go-version: "1.21"
           cache: false
+
+      # Install Task for goreleaser job
+      - name: Install Task
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4

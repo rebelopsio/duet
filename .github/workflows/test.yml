@@ -23,8 +23,10 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      # Install Task using direct download instead of the action
       - name: Install Task
-        uses: arduino/setup-task@v1
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
       - name: Run Tests
         run: |
