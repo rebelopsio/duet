@@ -2,26 +2,23 @@ package executor
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/rebelopsio/duet/internal/config/ssh"
 )
 
-type Executor struct {
-	sshClient *ssh.Client
+// Executor defines the interface for executing commands
+type ExecutorInterface interface {
+	Execute(ctx context.Context, command string) (string, error)
 }
 
-func NewExecutor(sshConfig *ssh.Config) (*Executor, error) {
-	client, err := ssh.NewClient(sshConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH client: %w", err)
-	}
+type Executor struct {
+	executor ExecutorInterface
+}
 
+func NewExecutor(executor ExecutorInterface) *Executor {
 	return &Executor{
-		sshClient: client,
-	}, nil
+		executor: executor,
+	}
 }
 
 func (e *Executor) Execute(ctx context.Context, command string) (string, error) {
-	return e.sshClient.Execute(ctx, command)
+	return e.executor.Execute(ctx, command)
 }

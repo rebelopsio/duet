@@ -1,0 +1,945 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>duet: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/rebelopsio/duet/cmd/duet/main.go (0.0%)</option>
+				
+				<option value="file1">github.com/rebelopsio/duet/internal/config/executor/executor.go (0.0%)</option>
+				
+				<option value="file2">github.com/rebelopsio/duet/internal/config/ssh/client.go (61.3%)</option>
+				
+				<option value="file3">github.com/rebelopsio/duet/internal/config/tasks/package.go (66.7%)</option>
+				
+				<option value="file4">github.com/rebelopsio/duet/internal/core/lua/engine.go (84.6%)</option>
+				
+				<option value="file5">github.com/rebelopsio/duet/internal/core/state/store.go (85.0%)</option>
+				
+				<option value="file6">github.com/rebelopsio/duet/internal/iac/planner/planner.go (66.7%)</option>
+				
+				<option value="file7">github.com/rebelopsio/duet/internal/iac/provider/aws/aws.go (0.0%)</option>
+				
+				<option value="file8">github.com/rebelopsio/duet/internal/iac/provider/aws/ec2.go (0.0%)</option>
+				
+				<option value="file9">github.com/rebelopsio/duet/pkg/types/resource.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "fmt"
+        "log"
+        "os"
+
+        "github.com/spf13/cobra"
+        "github.com/spf13/viper"
+
+        "github.com/rebelopsio/duet/internal/core/state"
+)
+
+var (
+        cfgFile string
+        store   *state.Store
+)
+
+func main() <span class="cov0" title="0">{
+        if err := rootCmd.Execute(); err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintln(os.Stderr, err)
+                os.Exit(1)
+        }</span>
+}
+
+var rootCmd = &amp;cobra.Command{
+        Use:   "duet",
+        Short: "Duet - Infrastructure and Configuration in Harmony",
+        Long: `Duet is a tool that orchestrates both infrastructure provisioning
+and configuration management using Lua as its configuration language.
+Complete documentation is available at https://github.com/rebelopsio/duet`,
+}
+
+var applyCmd = &amp;cobra.Command{
+        Use:   "apply [file]",
+        Short: "Apply infrastructure and configuration changes",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error <span class="cov0" title="0">{
+                return handleApply(args[0])
+        }</span>,
+}
+
+var planCmd = &amp;cobra.Command{
+        Use:   "plan [file]",
+        Short: "Show planned changes",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error <span class="cov0" title="0">{
+                return handlePlan(args[0])
+        }</span>,
+}
+
+func init() <span class="cov0" title="0">{
+        cobra.OnInitialize(initConfig)
+
+        rootCmd.PersistentFlags().StringVar(&amp;cfgFile, "config", "", "config file (default is $HOME/.duet.yaml)")
+
+        rootCmd.AddCommand(applyCmd)
+        rootCmd.AddCommand(planCmd)
+
+        // Initialize state store
+        var err error
+        store, err = state.NewStore("duet.db")
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal(err)
+        }</span>
+}
+
+func initConfig() <span class="cov0" title="0">{
+        if cfgFile != "" </span><span class="cov0" title="0">{
+                viper.SetConfigFile(cfgFile)
+        }</span> else<span class="cov0" title="0"> {
+                home, err := os.UserHomeDir()
+                cobra.CheckErr(err)
+
+                viper.AddConfigPath(home)
+                viper.SetConfigType("yaml")
+                viper.SetConfigName(".duet")
+        }</span>
+
+        <span class="cov0" title="0">viper.AutomaticEnv()
+
+        if err := viper.ReadInConfig(); err == nil </span><span class="cov0" title="0">{
+                fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+        }</span>
+}
+
+func handleApply(filename string) error <span class="cov0" title="0">{
+        ctx := context.Background()
+        resources, err := store.GetResources(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get resources: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">log.Printf("Found %d existing resources", len(resources))
+
+        // TODO: Implement actual apply logic
+        return nil</span>
+}
+
+func handlePlan(filename string) error <span class="cov0" title="0">{
+        ctx := context.Background()
+        resources, err := store.GetResources(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get resources: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">log.Printf("Planning changes for %d existing resources", len(resources))
+
+        // TODO: Implement actual plan logic
+        return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package executor
+
+import (
+        "context"
+)
+
+// Executor defines the interface for executing commands
+type ExecutorInterface interface {
+        Execute(ctx context.Context, command string) (string, error)
+}
+
+type Executor struct {
+        executor ExecutorInterface
+}
+
+func NewExecutor(executor ExecutorInterface) *Executor <span class="cov0" title="0">{
+        return &amp;Executor{
+                executor: executor,
+        }
+}</span>
+
+func (e *Executor) Execute(ctx context.Context, command string) (string, error) <span class="cov0" title="0">{
+        return e.executor.Execute(ctx, command)
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package ssh
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "net"
+        "strings"
+        "sync"
+        "time"
+
+        "golang.org/x/crypto/ssh"
+)
+
+// Config holds the SSH client configuration
+type Config struct {
+        Host       string
+        User       string
+        PrivateKey string
+        Port       int
+        Timeout    time.Duration
+}
+
+// Client represents an SSH client
+type Client struct {
+        config *Config
+        client *ssh.Client
+}
+
+// NewClient creates a new SSH client with timeouts
+func NewClient(config *Config) (*Client, error) <span class="cov5" title="3">{
+        if config.Timeout == 0 </span><span class="cov0" title="0">{
+                config.Timeout = 30 * time.Second
+        }</span>
+
+        // Parse the private key
+        <span class="cov5" title="3">signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKey))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse private key: %w", err)
+        }</span>
+
+        // Create SSH client config
+        <span class="cov5" title="3">sshConfig := &amp;ssh.ClientConfig{
+                User: config.User,
+                Auth: []ssh.AuthMethod{
+                        ssh.PublicKeys(signer),
+                },
+                HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+                Timeout:         config.Timeout,
+        }
+
+        // Create a connection with timeout
+        addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+        conn, err := net.DialTimeout("tcp", addr, config.Timeout)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to connect: %w", err)
+        }</span>
+
+        // Set connection deadline
+        <span class="cov5" title="3">if err := conn.SetDeadline(time.Now().Add(config.Timeout)); err != nil </span><span class="cov0" title="0">{
+                closeErr := conn.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to set connection deadline and close connection: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to set connection deadline: %w", err)</span>
+        }
+
+        // Create new SSH client connection
+        <span class="cov5" title="3">c, chans, reqs, err := ssh.NewClientConn(conn.(*net.TCPConn), addr, sshConfig)
+        if err != nil </span><span class="cov0" title="0">{
+                closeErr := conn.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to create SSH connection and close connection: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to create SSH connection: %w", err)</span>
+        }
+
+        // Clear the deadline after successful handshake
+        <span class="cov5" title="3">if err := conn.SetDeadline(time.Time{}); err != nil </span><span class="cov0" title="0">{
+                closeErr := c.Close()
+                if closeErr != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to clear connection deadline and close client: %v, close error: %w", err, closeErr)
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("failed to clear connection deadline: %w", err)</span>
+        }
+
+        <span class="cov5" title="3">client := ssh.NewClient(c, chans, reqs)
+
+        return &amp;Client{
+                config: config,
+                client: client,
+        }, nil</span>
+}
+
+// Close closes the SSH connection
+func (c *Client) Close() error <span class="cov5" title="3">{
+        if c.client != nil </span><span class="cov5" title="3">{
+                return c.client.Close()
+        }</span>
+        <span class="cov0" title="0">return nil</span>
+}
+
+// ValidateConnection tests if the SSH connection is working
+func (c *Client) ValidateConnection() error <span class="cov1" title="1">{
+        session, err := c.client.NewSession()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create session: %w", err)
+        }</span>
+        <span class="cov1" title="1">defer func() </span><span class="cov1" title="1">{
+                if err := session.Close(); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("error closing session: %v\n", err)
+                }</span>
+        }()
+        <span class="cov1" title="1">return nil</span>
+}
+
+// Execute runs a command over SSH with context for cancellation
+func (c *Client) Execute(ctx context.Context, command string) (string, error) <span class="cov3" title="2">{
+        session, err := c.client.NewSession()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create session: %w", err)
+        }</span>
+        <span class="cov3" title="2">defer func() </span><span class="cov3" title="2">{
+                if err := session.Close(); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error closing session: %v\n", err)
+                }</span>
+        }()
+
+        // Set up pipes for output
+        <span class="cov3" title="2">stdout, err := session.StdoutPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create stdout pipe: %w", err)
+        }</span>
+        <span class="cov3" title="2">stderr, err := session.StderrPipe()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create stderr pipe: %w", err)
+        }</span>
+
+        <span class="cov3" title="2">type commandResult struct {
+                output     string
+                err        error
+                stderrData string
+        }
+        resultChan := make(chan commandResult, 1)
+
+        go func() </span><span class="cov3" title="2">{
+                // Start the command
+                if err := session.Start(command); err != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to start command: %w", err)}
+                        return
+                }</span>
+
+                // Read stdout and stderr concurrently
+                <span class="cov3" title="2">var stdoutData, stderrData []byte
+                var stdoutErr, stderrErr error
+                var wg sync.WaitGroup
+
+                wg.Add(2)
+                go func() </span><span class="cov3" title="2">{
+                        defer wg.Done()
+                        stdoutData, stdoutErr = io.ReadAll(stdout)
+                }</span>()
+
+                <span class="cov3" title="2">go func() </span><span class="cov3" title="2">{
+                        defer wg.Done()
+                        stderrData, stderrErr = io.ReadAll(stderr)
+                }</span>()
+
+                // Wait for all readers to complete
+                <span class="cov3" title="2">wg.Wait()
+
+                // Handle any read errors
+                if stdoutErr != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to read stdout: %w", stdoutErr)}
+                        return
+                }</span>
+                <span class="cov3" title="2">if stderrErr != nil </span><span class="cov0" title="0">{
+                        resultChan &lt;- commandResult{err: fmt.Errorf("failed to read stderr: %w", stderrErr)}
+                        return
+                }</span>
+
+                // Wait for the command to complete
+                <span class="cov3" title="2">err := session.Wait()
+                if err != nil </span><span class="cov1" title="1">{
+                        resultChan &lt;- commandResult{
+                                err:        fmt.Errorf("command failed: %w", err),
+                                stderrData: string(stderrData),
+                        }
+                        return
+                }</span>
+
+                <span class="cov1" title="1">resultChan &lt;- commandResult{
+                        output:     string(stdoutData),
+                        stderrData: string(stderrData),
+                }</span>
+        }()
+
+        // Wait for completion or cancellation
+        <span class="cov3" title="2">select </span>{
+        case result := &lt;-resultChan:<span class="cov1" title="1">
+                if result.err != nil </span><span class="cov0" title="0">{
+                        if result.stderrData != "" </span><span class="cov0" title="0">{
+                                return "", fmt.Errorf("%w: %s", result.err, result.stderrData)
+                        }</span>
+                        <span class="cov0" title="0">return "", result.err</span>
+                }
+                <span class="cov1" title="1">return result.output, nil</span>
+
+        case &lt;-ctx.Done():<span class="cov1" title="1">
+                if err := session.Signal(ssh.SIGTERM); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error sending SIGTERM: %v\n", err)
+                }</span>
+                <span class="cov1" title="1">return "", ctx.Err()</span>
+
+        case &lt;-time.After(c.config.Timeout):<span class="cov0" title="0">
+                if err := session.Signal(ssh.SIGTERM); err != nil &amp;&amp; !isClosedError(err) </span><span class="cov0" title="0">{
+                        fmt.Printf("error sending SIGTERM: %v\n", err)
+                }</span>
+                <span class="cov0" title="0">return "", context.DeadlineExceeded</span>
+        }
+}
+
+func isClosedError(err error) bool <span class="cov10" title="11">{
+        if err == nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov10" title="11">return strings.Contains(err.Error(), "use of closed network connection") ||
+                strings.Contains(err.Error(), "connection reset by peer") ||
+                strings.Contains(err.Error(), "closed network connection") ||
+                strings.Contains(err.Error(), "EOF")</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package tasks
+
+import (
+        "context"
+        "fmt"
+)
+
+// ExecutorInterface defines the required methods for command execution
+type ExecutorInterface interface {
+        Execute(ctx context.Context, command string) (string, error)
+}
+
+type PackageManager struct {
+        executor ExecutorInterface
+}
+
+func NewPackageManager(executor ExecutorInterface) *PackageManager <span class="cov0" title="0">{
+        return &amp;PackageManager{
+                executor: executor,
+        }
+}</span>
+
+func (pm *PackageManager) Install(ctx context.Context, packageName string) error <span class="cov8" title="1">{
+        _, err := pm.executor.Execute(ctx, fmt.Sprintf("apt-get install -y %s", packageName))
+        return err
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package lua
+
+import (
+        "fmt"
+
+        lua "github.com/yuin/gopher-lua"
+)
+
+type Engine struct {
+        state *lua.LState
+}
+
+func NewEngine() *Engine <span class="cov10" title="3">{
+        return &amp;Engine{
+                state: lua.NewState(),
+        }
+}</span>
+
+func (e *Engine) Close() <span class="cov10" title="3">{
+        if e.state != nil </span><span class="cov10" title="3">{
+                e.state.Close()
+        }</span>
+}
+
+func (e *Engine) LoadFile(filename string) error <span class="cov0" title="0">{
+        return e.state.DoFile(filename)
+}</span>
+
+func (e *Engine) CallFunction(name string, args ...lua.LValue) (lua.LValue, error) <span class="cov10" title="3">{
+        fn := e.state.GetGlobal(name)
+        if fn == lua.LNil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("function %s not found", name)
+        }</span>
+
+        <span class="cov6" title="2">err := e.state.CallByParam(lua.P{
+                Fn:      fn,
+                NRet:    1,
+                Protect: true,
+        }, args...)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("error calling function %s: %w", name, err)
+        }</span>
+
+        <span class="cov6" title="2">ret := e.state.Get(-1)
+        e.state.Pop(1)
+        return ret, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">// internal/core/state/store.go
+package state
+
+import (
+        "context"
+        "fmt"
+
+        "gorm.io/driver/sqlite"
+        "gorm.io/gorm"
+)
+
+type Store struct {
+        db *gorm.DB
+}
+
+type Resource struct {
+        ID            string `gorm:"primaryKey"`
+        Type          string
+        Name          string
+        Provider      string
+        Status        string
+        LastUpdated   string
+        Metadata      []byte
+        ConfigApplied bool
+}
+
+func NewStore(dbPath string) (*Store, error) <span class="cov1" title="1">{
+        db, err := gorm.Open(sqlite.Open(dbPath), &amp;gorm.Config{})
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to open database: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">if err := db.AutoMigrate(&amp;Resource{}); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to migrate database: %w", err)
+        }</span>
+
+        <span class="cov1" title="1">return &amp;Store{db: db}, nil</span>
+}
+
+// GetResources retrieves all resources from the store
+func (s *Store) GetResources(ctx context.Context) ([]Resource, error) <span class="cov10" title="2">{
+        var resources []Resource
+        result := s.db.WithContext(ctx).Find(&amp;resources)
+        if result.Error != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to get resources: %w", result.Error)
+        }</span>
+        <span class="cov10" title="2">return resources, nil</span>
+}
+
+// SaveResource saves a resource to the store
+func (s *Store) SaveResource(ctx context.Context, resource *Resource) error <span class="cov10" title="2">{
+        result := s.db.WithContext(ctx).Save(resource)
+        return result.Error
+}</span>
+
+// GetResource retrieves a single resource by ID
+func (s *Store) GetResource(ctx context.Context, id string) (*Resource, error) <span class="cov10" title="2">{
+        var resource Resource
+        result := s.db.WithContext(ctx).First(&amp;resource, "id = ?", id)
+        if result.Error != nil </span><span class="cov1" title="1">{
+                return nil, result.Error
+        }</span>
+        <span class="cov1" title="1">return &amp;resource, nil</span>
+}
+
+// DeleteResource removes a resource from the store
+func (s *Store) DeleteResource(ctx context.Context, id string) error <span class="cov1" title="1">{
+        result := s.db.WithContext(ctx).Delete(&amp;Resource{}, "id = ?", id)
+        return result.Error
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package planner
+
+import (
+        "context"
+
+        "github.com/rebelopsio/duet/internal/iac/provider"
+        "github.com/rebelopsio/duet/pkg/types"
+)
+
+type Change struct {
+        Resource types.Resource
+        Config   map[string]interface{}
+        Type     string
+        Provider string
+}
+
+type Plan struct {
+        Changes []Change
+}
+
+type Planner struct {
+        providers map[string]provider.Provider
+}
+
+func NewPlanner() *Planner <span class="cov0" title="0">{
+        return &amp;Planner{
+                providers: make(map[string]provider.Provider),
+        }
+}</span>
+
+func (p *Planner) RegisterProvider(provider provider.Provider) <span class="cov8" title="1">{
+        p.providers[provider.Name()] = provider
+}</span>
+
+func (p *Planner) CreatePlan(ctx context.Context, config map[string]interface{}) (*Plan, error) <span class="cov8" title="1">{
+        // Implementation will go here
+        return &amp;Plan{}, nil
+}</span>
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package aws
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/aws/aws-sdk-go-v2/config"
+)
+
+type AWSProvider struct {
+        ec2Client *EC2Client
+        region    string
+}
+
+func NewAWSProvider(ctx context.Context, region string) (*AWSProvider, error) <span class="cov0" title="0">{
+        cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("unable to load AWS config: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">ec2Client, err := NewEC2Client(cfg)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">return &amp;AWSProvider{
+                region:    region,
+                ec2Client: ec2Client,
+        }, nil</span>
+}
+
+func (p *AWSProvider) Name() string <span class="cov0" title="0">{
+        return "aws"
+}</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">// internal/iac/provider/aws/ec2.go
+package aws
+
+import (
+        "context"
+        "fmt"
+
+        "github.com/aws/aws-sdk-go-v2/aws"
+        "github.com/aws/aws-sdk-go-v2/service/ec2"
+)
+
+type EC2Client struct {
+        client *ec2.Client
+}
+
+func NewEC2Client(cfg aws.Config) (*EC2Client, error) <span class="cov0" title="0">{
+        return &amp;EC2Client{
+                client: ec2.NewFromConfig(cfg),
+        }, nil
+}</span>
+
+func (c *EC2Client) CreateInstance(ctx context.Context, config map[string]interface{}) (string, error) <span class="cov0" title="0">{
+        // Example implementation using the client
+        input := &amp;ec2.RunInstancesInput{
+                MaxCount: aws.Int32(1),
+                MinCount: aws.Int32(1),
+                // Add other configuration as needed
+        }
+
+        result, err := c.client.RunInstances(ctx, input)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to create instance: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if len(result.Instances) == 0 </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("no instance created")
+        }</span>
+
+        <span class="cov0" title="0">return *result.Instances[0].InstanceId, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">// pkg/types/resource.go
+package types
+
+import (
+        "encoding/json"
+        "fmt"
+        "time"
+)
+
+// ResourceType represents the type of infrastructure resource
+type ResourceType string
+
+// Common resource types
+const (
+        ResourceTypeInstance ResourceType = "instance"
+        ResourceTypeVolume   ResourceType = "volume"
+        ResourceTypeNetwork  ResourceType = "network"
+        ResourceTypeStorage  ResourceType = "storage"
+)
+
+// ResourceStatus represents the current state of a resource
+type ResourceStatus string
+
+// Resource status constants
+const (
+        StatusPending     ResourceStatus = "pending"
+        StatusCreating    ResourceStatus = "creating"
+        StatusRunning     ResourceStatus = "running"
+        StatusUpdating    ResourceStatus = "updating"
+        StatusDeleting    ResourceStatus = "deleting"
+        StatusDeleted     ResourceStatus = "deleted"
+        StatusFailed      ResourceStatus = "failed"
+        StatusUnavailable ResourceStatus = "unavailable"
+)
+
+// Resource represents any infrastructure or configuration resource
+type Resource interface {
+        // GetID returns the unique identifier of the resource
+        GetID() string
+
+        // GetType returns the type of the resource
+        GetType() ResourceType
+
+        // GetProvider returns the provider responsible for this resource
+        GetProvider() string
+
+        // GetStatus returns the current status of the resource
+        GetStatus() ResourceStatus
+
+        // GetMetadata returns additional resource-specific data
+        GetMetadata() map[string]interface{}
+
+        // GetTags returns the tags associated with the resource
+        GetTags() map[string]string
+
+        // GetCreatedAt returns when the resource was created
+        GetCreatedAt() time.Time
+
+        // GetUpdatedAt returns when the resource was last updated
+        GetUpdatedAt() time.Time
+}
+
+// BaseResource provides a basic implementation of the Resource interface
+type BaseResource struct {
+        CreatedAt time.Time              `json:"created_at"`
+        UpdatedAt time.Time              `json:"updated_at"`
+        Metadata  map[string]interface{} `json:"metadata"`
+        Tags      map[string]string      `json:"tags"`
+        ID        string                 `json:"id"`
+        Type      ResourceType           `json:"type"`
+        Provider  string                 `json:"provider"`
+        Status    ResourceStatus         `json:"status"`
+}
+
+// Implementation of Resource interface for BaseResource
+func (r *BaseResource) GetID() string                       <span class="cov0" title="0">{ return r.ID }</span>
+func (r *BaseResource) GetType() ResourceType               <span class="cov0" title="0">{ return r.Type }</span>
+func (r *BaseResource) GetProvider() string                 <span class="cov0" title="0">{ return r.Provider }</span>
+func (r *BaseResource) GetStatus() ResourceStatus           <span class="cov0" title="0">{ return r.Status }</span>
+func (r *BaseResource) GetMetadata() map[string]interface{} <span class="cov0" title="0">{ return r.Metadata }</span>
+func (r *BaseResource) GetTags() map[string]string          <span class="cov0" title="0">{ return r.Tags }</span>
+func (r *BaseResource) GetCreatedAt() time.Time             <span class="cov0" title="0">{ return r.CreatedAt }</span>
+func (r *BaseResource) GetUpdatedAt() time.Time             <span class="cov0" title="0">{ return r.UpdatedAt }</span>
+
+// ResourceChange represents a change to be made to a resource
+type ResourceChange struct {
+        Resource     Resource
+        ChangedProps map[string]interface{}
+        ChangeType   ChangeType
+}
+
+// ChangeType represents the type of change to be made
+type ChangeType string
+
+const (
+        ChangeTypeCreate ChangeType = "create"
+        ChangeTypeUpdate ChangeType = "update"
+        ChangeTypeDelete ChangeType = "delete"
+        ChangeTypeNoOp   ChangeType = "no-op"
+)
+
+// ResourceError represents an error that occurred while managing a resource
+type ResourceError struct {
+        Resource Resource
+        Err      error
+        Message  string
+}
+
+func (e *ResourceError) Error() string <span class="cov0" title="0">{
+        return fmt.Sprintf("resource error [%s/%s]: %s: %v",
+                e.Resource.GetProvider(),
+                e.Resource.GetID(),
+                e.Message,
+                e.Err)
+}</span>
+
+// ResourceDependency represents a dependency between resources
+type ResourceDependency struct {
+        Resource   Resource
+        DependsOn  []string
+        RequiredBy []string
+}
+
+// ResourceMetadata provides helper functions for working with resource metadata
+type ResourceMetadata map[string]interface{}
+
+// GetString safely retrieves a string value from metadata
+func (m ResourceMetadata) GetString(key string) (string, error) <span class="cov0" title="0">{
+        v, ok := m[key]
+        if !ok </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("key %s not found in metadata", key)
+        }</span>
+        <span class="cov0" title="0">s, ok := v.(string)
+        if !ok </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("value for key %s is not a string", key)
+        }</span>
+        <span class="cov0" title="0">return s, nil</span>
+}
+
+// GetInt safely retrieves an int value from metadata
+func (m ResourceMetadata) GetInt(key string) (int, error) <span class="cov0" title="0">{
+        v, ok := m[key]
+        if !ok </span><span class="cov0" title="0">{
+                return 0, fmt.Errorf("key %s not found in metadata", key)
+        }</span>
+        <span class="cov0" title="0">i, ok := v.(int)
+        if !ok </span><span class="cov0" title="0">{
+                return 0, fmt.Errorf("value for key %s is not an int", key)
+        }</span>
+        <span class="cov0" title="0">return i, nil</span>
+}
+
+// ToJSON converts the metadata to a JSON string
+func (m ResourceMetadata) ToJSON() (string, error) <span class="cov0" title="0">{
+        bytes, err := json.Marshal(m)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to marshal metadata to JSON: %w", err)
+        }</span>
+        <span class="cov0" title="0">return string(bytes), nil</span>
+}
+
+// FromJSON populates the metadata from a JSON string
+func (m *ResourceMetadata) FromJSON(data string) error <span class="cov0" title="0">{
+        return json.Unmarshal([]byte(data), m)
+}</span>
+
+// Validate checks if required metadata fields are present
+func (m ResourceMetadata) Validate(required []string) error <span class="cov0" title="0">{
+        for _, field := range required </span><span class="cov0" title="0">{
+                if _, ok := m[field]; !ok </span><span class="cov0" title="0">{
+                        return fmt.Errorf("required metadata field %s is missing", field)
+                }</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

@@ -2,8 +2,8 @@ version: "3"
 
 vars:
   GO_MODULE: github.com/rebelopsio/duet
-  BUILD_DIR: dist
-  COVERAGE_DIR: coverage
+  BUILD_DIR: "{{.ROOT_DIR}}/dist"
+  COVERAGE_DIR: "{{.ROOT_DIR}}/coverage"
 
 tasks:
   default:
@@ -19,7 +19,10 @@ tasks:
   ensure-lint:
     internal: true
     cmds:
-      - which golangci-lint || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - |
+        if ! command -v golangci-lint &> /dev/null; then
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        fi
 
   lint:
     desc: Run golangci-lint
@@ -32,12 +35,11 @@ tasks:
     cmds:
       - mkdir -p {{.COVERAGE_DIR}}
       - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
-      - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
 
   build:
     desc: Build binary
+    deps: [clean]
     cmds:
-      - task: clean
       - mkdir -p {{.BUILD_DIR}}
       - go build -o {{.BUILD_DIR}}/duet cmd/duet/main.go
 
@@ -58,16 +60,3 @@ tasks:
       - task: generate
       - task: lint
       - task: test
-
-  check-license:
-    desc: Check license headers
-    cmds:
-      - |
-        find . -type f -name "*.go" -not -path "./vendor/*" -exec sh -c '
-          for file do
-            if ! grep -q "Copyright" "$file"; then
-              echo "Missing license header in $file"
-              exit 1
-            fi
-          done
-        ' sh {} +
