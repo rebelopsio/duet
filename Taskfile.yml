@@ -4,55 +4,25 @@ vars:
   GO_MODULE: github.com/rebelopsio/duet
   BUILD_DIR: "{{.ROOT_DIR}}/dist"
   COVERAGE_DIR: "{{.ROOT_DIR}}/coverage"
-  IS_WINDOWS:
-    sh: echo {{if eq OS "windows"}}true{{else}}false{{end}}
 
 tasks:
   default:
     cmds:
       - task: test
 
-  clean:unix:
-    internal: true
-    cmds:
-      - rm -rf {{.BUILD_DIR}}
-      - rm -rf {{.COVERAGE_DIR}}
-    platforms: [linux, darwin]
-
-  clean:windows:
-    internal: true
-    cmds:
-      - if exist {{.BUILD_DIR}} rd /s /q {{.BUILD_DIR}}
-      - if exist {{.COVERAGE_DIR}} rd /s /q {{.COVERAGE_DIR}}
-    platforms: [windows]
-
   clean:
     desc: Clean build artifacts
     cmds:
-      - task: clean:{{if eq OS "windows"}}windows{{else}}unix{{end}}
+      - rm -rf {{.BUILD_DIR}}
+      - rm -rf {{.COVERAGE_DIR}}
 
-  ensure-lint:unix:
+  ensure-lint:
     internal: true
     cmds:
       - |
         if ! command -v golangci-lint &> /dev/null; then
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
         fi
-    platforms: [linux, darwin]
-
-  ensure-lint:windows:
-    internal: true
-    cmds:
-      - |
-        if (!(Get-Command golangci-lint -ErrorAction SilentlyContinue)) {
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-        }
-    platforms: [windows]
-
-  ensure-lint:
-    internal: true
-    cmds:
-      - task: ensure-lint:{{if eq OS "windows"}}windows{{else}}unix{{end}}
 
   lint:
     desc: Run golangci-lint
@@ -60,45 +30,18 @@ tasks:
     cmds:
       - golangci-lint run --config=.golangci.yml
 
-  test:unix:
-    internal: true
-    cmds:
-      - mkdir -p {{.COVERAGE_DIR}}
-      - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
-    platforms: [linux, darwin]
-
-  test:windows:
-    internal: true
-    cmds:
-      - if not exist {{.COVERAGE_DIR}} mkdir {{.COVERAGE_DIR}}
-      - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
-    platforms: [windows]
-
   test:
     desc: Run tests
     cmds:
-      - task: test:{{if eq OS "windows"}}windows{{else}}unix{{end}}
-
-  build:unix:
-    internal: true
-    deps: [clean]
-    cmds:
-      - mkdir -p {{.BUILD_DIR}}
-      - go build -o {{.BUILD_DIR}}/duet{{.EXE_EXT}} cmd/duet/main.go
-    platforms: [linux, darwin]
-
-  build:windows:
-    internal: true
-    deps: [clean]
-    cmds:
-      - if not exist {{.BUILD_DIR}} mkdir {{.BUILD_DIR}}
-      - go build -o {{.BUILD_DIR}}/duet{{.EXE_EXT}} cmd/duet/main.go
-    platforms: [windows]
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -race -coverprofile={{.COVERAGE_DIR}}/coverage.out -covermode=atomic ./...
 
   build:
     desc: Build binary
+    deps: [clean]
     cmds:
-      - task: build:{{if eq OS "windows"}}windows{{else}}unix{{end}}
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/duet cmd/duet/main.go
 
   install-tools:
     desc: Install development tools
